@@ -1,23 +1,25 @@
 # Flow
 
-**Flow** is a visual workflow automation application by Orb Technologies, designed around the Orb! language and runtime.
+**Flow** is a visual workflow builder by Orb Technologies.
 
 ## Product direction
 
 - Visual, drag-and-drop workflow editing.
-- Orb! as the native workflow language and execution runtime.
+- A self-contained workflow format that can be saved, imported and exported.
+- A local preview engine for testing block order, text values and conditional branches.
 - Shared application code across Windows, macOS, Linux and Android.
-- Native installers and a guided first-run setup; end users should not need to install developer toolchains.
-- Optional external-language adapters, without making them the default path.
+- Future integrations, including an optional Orb! runtime adapter, can extend the preview engine without making the language a prerequisite.
 
 ## Current preview
 
-- Drag blocks onto a canvas and connect them.
-- Configure text and condition blocks.
-- Run the local demonstration engine and inspect logs.
-- Automatic browser save, JSON import and export.
+- Add trigger, text, condition and output blocks.
+- Connect blocks to define execution order and YES/NO condition paths.
+- Configure block names, text content and match conditions.
+- Run a local preview and watch node status and execution logs update.
+- Automatic local save, JSON import and export.
+- A touch-friendly mobile layout and a first-run product tour.
 
-**Important:** the current runner is a local demonstration only. It does not execute Orb! code or connect to external services yet. The Tauri application shell and platform installers are being introduced; platform builds are not yet release-ready.
+**Execution boundary:** the current preview engine only processes the four built-in block types locally. It does not execute Orb! code, call external APIs, send messages, or access local files. Integrations are not shipped yet.
 
 ## Development
 
@@ -37,9 +39,9 @@ npm run tauri:build
 
 Android development additionally requires Android Studio, Android SDK/NDK and a JDK. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-## Platform and Orb! architecture
+## Architecture
 
-See [the platform and Orb! integration plan](docs/architecture/platforms-and-orb-integration.md).
+See [the platform and integration plan](docs/architecture/platforms-and-orb-integration.md).
 
 ## License
 

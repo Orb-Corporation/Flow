@@ -28,7 +28,7 @@ const steps = [
   {
     title: 'Save and try a preview',
     description: 'Your current workflow is saved on this device. Export a JSON copy to move it to another device.',
-    detail: 'Use Run workflow to inspect the local preview log. Import and Export are available in the top bar.',
+    detail: 'Use Preview workflow to inspect the local execution log. Import and Export are available in the top bar.',
     icon: FileJson,
   },
 ]
@@ -60,7 +60,7 @@ export default function OnboardingWizard({ onClose }: OnboardingWizardProps) {
           <span>{current.detail}</span>
         </div>
         <div className="wizard-warning">
-          Orb! runtime integration is not connected in this preview yet. Run workflow currently simulates the blocks locally; it does not call real APIs or access files, email, or external services.
+          Preview runs are local only. The current blocks process text and conditions inside Flow; they do not call external APIs or access files, email, or other services.
         </div>
 
         <div className="wizard-footer">

@@ -29,7 +29,14 @@
     "targets": "all",
     "category": "Productivity",
     "shortDescription": "Visual workflow automation",
-    "longDescription": "Build and run workflows with a visual, drag-and-drop editor. Designed to integrate with Orb!.",
-    "copyright": "Copyright © Orb Technologies"
+    "longDescription": "Build, preview and organize workflows with a visual, drag-and-drop editor.",
+    "copyright": "Copyright © Orb Technologies",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }

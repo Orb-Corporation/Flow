@@ -18,10 +18,10 @@ import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react
 import OnboardingWizard from './OnboardingWizard'
 import {
   Activity,
+  Maximize2,
   ArrowDownToLine,
   ArrowUpFromLine,
   Check,
-  ChevronDown,
   CircleHelp,
   Clock3,
   Code2,
@@ -34,7 +34,6 @@ import {
   Plus,
   Save,
   Search,
-  Sparkles,
   Terminal,
   Trash2,
   Type,
@@ -126,19 +125,157 @@ const starterEdges: Edge[] = [
   { id: 'edge-text-output', source: 'text-message', target: 'output-result', type: 'smoothstep' },
 ]
 
+function normalizeWorkspace(value: unknown): SavedWorkspace | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const candidate = value as Record<string, unknown>
+  if (
+    candidate.version !== 1 ||
+    !Array.isArray(candidate.nodes) ||
+    !Array.isArray(candidate.edges) ||
+    typeof candidate.name !== 'string' ||
+    candidate.nodes.length > 500 ||
+    candidate.edges.length > 1000
+  ) {
+    return null
+  }
+
+  const nodes: FlowNode[] = []
+  const nodeIds = new Set<string>()
+
+  for (const rawNode of candidate.nodes) {
+    if (!rawNode || typeof rawNode !== 'object' || Array.isArray(rawNode)) return null
+    const item = rawNode as Record<string, unknown>
+    const position = item.position
+    const data = item.data
+    if (
+      typeof item.id !== 'string' ||
+      item.id.length === 0 ||
+      item.id.length > 120 ||
+      nodeIds.has(item.id) ||
+      !position ||
+      typeof position !== 'object' ||
+      Array.isArray(position) ||
+      !data ||
+      typeof data !== 'object' ||
+      Array.isArray(data)
+    ) {
+      return null
+    }
+
+    const point = position as Record<string, unknown>
+    const settings = data as Record<string, unknown>
+    const kind = settings.kind
+    if (
+      typeof point.x !== 'number' ||
+      !Number.isFinite(point.x) ||
+      typeof point.y !== 'number' ||
+      !Number.isFinite(point.y) ||
+      typeof kind !== 'string' ||
+      !Object.hasOwn(NODE_INFO, kind)
+    ) {
+      return null
+    }
+
+    const nodeKind = kind as NodeKind
+    nodeIds.add(item.id)
+    nodes.push({
+      id: item.id,
+      type: 'flowNode',
+      position: { x: point.x, y: point.y },
+      data: {
+        kind: nodeKind,
+        title: typeof settings.title === 'string' ? settings.title.slice(0, 60) : NODE_INFO[nodeKind].title,
+        description: NODE_INFO[nodeKind].description,
+        text: typeof settings.text === 'string' ? settings.text.slice(0, 20000) : '',
+        match: typeof settings.match === 'string' ? settings.match.slice(0, 500) : '',
+        status: 'idle',
+      },
+    })
+  }
+
+  const edges: Edge[] = []
+  const edgeIds = new Set<string>()
+  const edgeKeys = new Set<string>()
+
+  for (const rawEdge of candidate.edges) {
+    if (!rawEdge || typeof rawEdge !== 'object' || Array.isArray(rawEdge)) return null
+    const item = rawEdge as Record<string, unknown>
+    if (
+      typeof item.id !== 'string' ||
+      item.id.length === 0 ||
+      item.id.length > 160 ||
+      edgeIds.has(item.id) ||
+      typeof item.source !== 'string' ||
+      typeof item.target !== 'string' ||
+      !nodeIds.has(item.source) ||
+      !nodeIds.has(item.target)
+    ) {
+      return null
+    }
+
+    const sourceNode = nodes.find((node) => node.id === item.source)
+    const sourceHandle = typeof item.sourceHandle === 'string' ? item.sourceHandle : undefined
+    const targetHandle = typeof item.targetHandle === 'string' ? item.targetHandle : undefined
+    if (
+      sourceNode?.data.kind === 'condition' &&
+      sourceHandle !== 'yes' &&
+      sourceHandle !== 'no'
+    ) {
+      return null
+    }
+
+    const edgeKey = `${item.source}:${sourceHandle ?? ''}:${item.target}`
+    if (edgeKeys.has(edgeKey)) return null
+    edgeIds.add(item.id)
+    edgeKeys.add(edgeKey)
+    edges.push({
+      id: item.id,
+      source: item.source,
+      target: item.target,
+      type: 'smoothstep',
+      ...(sourceHandle ? { sourceHandle } : {}),
+      ...(targetHandle ? { targetHandle } : {}),
+      animated: false,
+    })
+  }
+
+  return {
+    version: 1,
+    name: candidate.name.slice(0, 64),
+    nodes,
+    edges,
+  }
+}
+
+function hasDirectedCycle(nodes: FlowNode[], edges: Edge[]): boolean {
+  const indegree = new Map(nodes.map((node) => [node.id, 0]))
+  const outgoing = new Map<string, string[]>()
+  for (const edge of edges) {
+    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1)
+    outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target])
+  }
+
+  const queue = nodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id)
+  let visitedCount = 0
+  while (queue.length > 0) {
+    const id = queue.shift()
+    if (!id) continue
+    visitedCount += 1
+    for (const target of outgoing.get(id) ?? []) {
+      const next = (indegree.get(target) ?? 0) - 1
+      indegree.set(target, next)
+      if (next === 0) queue.push(target)
+    }
+  }
+  return visitedCount !== nodes.length
+}
+
 function loadWorkspace(): SavedWorkspace {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (raw) {
-      const parsed = JSON.parse(raw) as SavedWorkspace
-      if (
-        parsed.version === 1 &&
-        Array.isArray(parsed.nodes) &&
-        Array.isArray(parsed.edges) &&
-        typeof parsed.name === 'string'
-      ) {
-        return parsed
-      }
+      const parsed = normalizeWorkspace(JSON.parse(raw) as unknown)
+      if (parsed) return parsed
     }
   } catch {
     // A damaged or unavailable local save should never prevent the editor from opening.
@@ -261,6 +398,7 @@ function FlowEditor() {
     }
   })
   const importInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const { screenToFlowPosition, fitView } = useReactFlow()
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
@@ -299,6 +437,26 @@ function FlowEditor() {
     const timeout = window.setTimeout(() => setNotice(''), 3200)
     return () => window.clearTimeout(timeout)
   }, [notice])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target
+      const isTyping =
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+
+      if (event.key === '/' && !isTyping && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      }
+      if (event.key === 'Escape') {
+        setMobilePanel(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [])
 
   const addNode = useCallback(
     (kind: NodeKind, position?: { x: number; y: number }) => {
@@ -362,6 +520,9 @@ function FlowEditor() {
   }
 
   const startNewWorkflow = () => {
+    if (nodes.length > 0 && !window.confirm('Start a new workflow? This replaces the current editor contents. Export first if you want to keep a separate copy.')) {
+      return
+    }
     setNodes([])
     setEdges([])
     setWorkflowName('Untitled workflow')
@@ -386,7 +547,7 @@ function FlowEditor() {
     anchor.href = url
     anchor.download = `${workflowName.trim().replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() || 'flow-workflow'}.json`
     anchor.click()
-    URL.revokeObjectURL(url)
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
     setNotice('Workflow exported')
   }
 
@@ -395,14 +556,15 @@ function FlowEditor() {
     if (!file) return
 
     try {
-      const parsed = JSON.parse(await file.text()) as SavedWorkspace
-      if (
-        parsed.version !== 1 ||
-        !Array.isArray(parsed.nodes) ||
-        !Array.isArray(parsed.edges) ||
-        typeof parsed.name !== 'string'
-      ) {
-        throw new Error('This file is not a supported Flow workflow.')
+      if (file.size > 2 * 1024 * 1024) {
+        throw new Error('Workflow files must be smaller than 2 MB.')
+      }
+      const parsed = normalizeWorkspace(JSON.parse(await file.text()) as unknown)
+      if (!parsed) {
+        throw new Error('This file is not a valid Flow workflow or contains unsupported blocks.')
+      }
+      if (nodes.length > 0 && !window.confirm('Import this workflow and replace the current editor contents? Export first if you want to keep a separate copy.')) {
+        return
       }
 
       setNodes(parsed.nodes)
@@ -426,6 +588,11 @@ function FlowEditor() {
       return
     }
 
+    if (hasDirectedCycle(nodes, edges)) {
+      setNotice('This preview cannot run workflows with loops. Remove the cycle and try again.')
+      return
+    }
+
     setIsRunning(true)
     setRunLogs([])
     setNodes((current) =>
@@ -440,7 +607,8 @@ function FlowEditor() {
     const logs: string[] = []
     const nodeLookup = new Map(nodes.map((node) => [node.id, node]))
 
-    while (queue.length > 0) {
+    try {
+      while (queue.length > 0) {
       const item = queue.shift()
       if (!item || visited.has(item.id)) continue
       visited.add(item.id)
@@ -489,6 +657,8 @@ function FlowEditor() {
         ),
       )
 
+      setRunLogs([...logs])
+
       const outgoing = edges.filter((edge) => edge.source === item.id)
       const nextEdges =
         node.data.kind === 'condition'
@@ -500,9 +670,11 @@ function FlowEditor() {
       })
     }
 
-    setRunLogs(logs)
-    setIsRunning(false)
-    setNotice('Workflow run finished — this is a local preview')
+      setRunLogs(logs)
+      setNotice('Preview finished. No external services were called.')
+    } finally {
+      setIsRunning(false)
+    }
   }
 
   const visibleKinds = (Object.keys(NODE_INFO) as NodeKind[]).filter((kind) => {
@@ -536,7 +708,6 @@ function FlowEditor() {
             onChange={(event) => setWorkflowName(event.target.value)}
             value={workflowName}
           />
-          <ChevronDown size={14} />
         </div>
 
         <div className="topbar-spacer" />
@@ -572,7 +743,7 @@ function FlowEditor() {
           type="button"
         >
           <Play size={15} fill="currentColor" />
-          <span>{isRunning ? 'Running…' : 'Run workflow'}</span>
+          <span>{isRunning ? 'Running…' : 'Preview workflow'}</span>
         </button>
       </header>
 
@@ -590,7 +761,9 @@ function FlowEditor() {
             <Search size={15} />
             <input
               onChange={(event) => setSearchTerm(event.target.value)}
+              aria-label="Find a block"
               placeholder="Find a block..."
+              ref={searchInputRef}
               value={searchTerm}
             />
             <kbd>/</kbd>
@@ -639,7 +812,7 @@ function FlowEditor() {
             <div className="canvas-tools">
               <span className="canvas-hint"><MousePointer2 size={13} /> Select and connect blocks</span>
               <button aria-label="Fit workflow to screen" className="icon-button" onClick={() => fitView({ padding: 0.24, duration: 350 })} type="button">
-                <Sparkles size={15} />
+                <Maximize2 size={15} />
               </button>
             </div>
           </div>
@@ -780,7 +953,7 @@ function FlowEditor() {
                 {selectedNode.data.kind === 'trigger' && (
                   <div className="info-card">
                     <Zap size={16} />
-                    <p>This workflow starts when you press <strong>Run workflow</strong>.</p>
+                    <p>This workflow starts when you press <strong>Preview workflow</strong>.</p>
                   </div>
                 )}
 

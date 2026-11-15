@@ -1,40 +1,34 @@
-# Flow platform and Orb! integration architecture
+# Flow platform and integration architecture
 
 ## Product contract
 
-Flow is a first-party Orb Technologies product. Orb! is the preferred and native automation language/runtime. The visual editor should generate and execute workflows through the Orb! runtime rather than making users write code by hand.
+Flow is a standalone visual workflow builder. A user can create, save, import, export and locally preview a workflow without installing Orb! or any other language runtime.
 
-Other-language steps may be supported through explicit adapters, but Orb! is the default path:
-- Orb! workflows: built-in blocks, first-class debugging, native types and standard library access.
-- External scripts: opt-in adapters with an explicit runtime/dependency check. They must not be required for ordinary workflows.
+External integrations are an extension point, not a requirement for using the editor. Orb! may become a first-party optional execution adapter in the future. Do not make the editor, workflow format or basic preview depend on that adapter, and never show an integration as connected before a real handshake succeeds.
 
-Do not fake an Orb! connection. The UI may only show Orb! as connected after the runtime handshake succeeds.
+## Workflow document and preview engine
 
-## Integration boundary
+Keep the visual editor and versioned workflow document independent from any external execution engine.
 
-Keep the React editor and workflow document format independent from the execution engine.
+The current local preview engine supports:
+- Manual trigger.
+- Text value creation/replacement.
+- Case-insensitive text-match conditions with YES/NO branches.
+- Output logging.
 
-1. The editor creates a versioned workflow graph.
-2. A compiler adapter converts the graph into an Orb! workflow module.
-3. The Orb! runtime executes the module and streams structured events back to Flow.
-4. Flow renders logs, node states, errors and outputs.
-5. The same adapter contract is used by desktop and Android builds.
+The preview engine must reject unsupported graph cycles rather than silently skipping nodes. It must clearly state that external services, local files and messaging are not available in this preview.
 
-The initial bridge contract should use versioned JSON messages. Required operations:
+## Optional integration boundary
+
+Future adapters should expose a small, versioned interface:
 - `runtime.info`: runtime version, protocol version and supported capabilities.
 - `workflow.validate`: validate a workflow without executing it.
-- `workflow.compile`: compile the graph to an Orb! execution plan.
+- `workflow.compile`: compile the graph to an adapter-specific execution plan.
 - `workflow.run`: start a run and return a run ID.
 - `workflow.cancel`: cancel a run.
 - `run.event`: stream node-started, node-finished, output and error events.
 
-The protocol must be versioned and reject incompatible major versions. Credentials must be stored in the platform's secure credential store, never in workflow JSON or localStorage.
-
-## Orb! distribution strategy
-
-Preferred experience: the Flow installer includes the compatible Orb! runtime component, so users do not have to install a language toolchain separately. If the runtime cannot be bundled for a platform yet, the setup wizard must explain the missing component and offer a guided Orb! installation; it must never silently fall back to a fake runner.
-
-Orb! runtime binaries and licenses must be supplied by the Orb! project and pinned to a tested version. Do not download arbitrary executables at first launch.
+The editor must remain usable when no adapter is installed. Credentials must be stored in the platform's secure credential store, never in workflow JSON or localStorage. Optional adapters must be explicit about required runtimes and permissions.
 
 ## Supported platforms
 
@@ -42,20 +36,15 @@ The target application shell is Tauri 2:
 - Windows: NSIS setup executable and MSI.
 - macOS: DMG and app bundle.
 - Linux: AppImage and DEB initially; RPM can follow.
-- Android: signed APK for direct testing/distribution, with Play Store packaging later.
+- Android: APK for direct testing/distribution, with Play Store packaging later.
 
-The React workflow editor remains shared. Platform-specific file access, notifications, secure storage and background execution must go through a narrow native adapter rather than browser-only APIs.
+The React workflow editor remains shared. Platform-specific file access, notifications, secure storage and background execution should go through narrow native adapters rather than browser-only APIs.
 
 ## Installation and first-run experience
 
-Desktop installers should provide a normal OS-native install flow. On first launch, Flow opens a short setup wizard:
-1. Welcome and platform compatibility check.
-2. Install/verify the bundled Orb! runtime.
-3. Choose where workflow files are stored.
-4. Optional startup and notification preferences.
-5. Run a built-in sample workflow and confirm success.
+Desktop installers should provide the normal OS-native install flow. The current first-run wizard is an in-app product tour, not a system setup wizard or runtime installer.
 
-Android does not permit a desktop-style installer wizard. Deliver an APK/app-store install, then show the same first-run setup as an in-app onboarding flow adapted to touch.
+Android does not permit a desktop-style installer wizard. Deliver an APK/app-store install, then show the same first-run tour adapted to touch.
 
 No terminal commands, Node.js, Rust, Python or manual dependency installation should be required for end users.
 
@@ -68,9 +57,8 @@ Release gates:
 - desktop shell compilation on Windows, macOS and Linux;
 - Android APK build;
 - install smoke test on each platform;
-- Orb! runtime handshake and sample workflow test;
-- SHA-256 checksums and signed release artifacts when signing credentials are available.
+- checksums and signed release artifacts when signing credentials are available.
 
 ## Current status
 
-The repository currently has a React web editor and a local demonstration runner. Tauri 2 scaffolding is being introduced. The Orb! runtime bridge, bundled runtime, Android project initialization, installer signing and native install smoke tests are not complete yet. Do not advertise these as shipped capabilities until verified.
+The repository contains a React editor, a local demonstration engine, first-run tour and Tauri 2 scaffolding. External integrations, a native setup wizard, install smoke tests, installer signing and release distribution are not complete. Do not advertise these as shipped capabilities until verified.
