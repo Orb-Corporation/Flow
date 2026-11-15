@@ -754,7 +754,9 @@ function FlowEditor() {
             }
 
             case 'condition': {
-              const expected = node.data.match.trim().toLocaleLowerCase()
+              const expected = resolveTemplate(node.data.match, item.value, variables)
+                .trim()
+                .toLocaleLowerCase()
               conditionPassed =
                 expected.length === 0 || item.value.toLocaleLowerCase().includes(expected)
               logs.push(`Condition: ${conditionPassed ? 'matched' : 'not matched'}`)
@@ -800,8 +802,16 @@ function FlowEditor() {
                   headers,
                   signal: controller.signal,
                 }
-                if (!['GET'].includes(node.data.requestMethod)) {
-                  requestInit.body = resolveTemplate(node.data.requestBody, item.value, variables)
+                if (node.data.requestMethod !== 'GET') {
+                  const requestBody = resolveTemplate(node.data.requestBody, item.value, variables)
+                  requestInit.body = requestBody
+                  if (
+                    requestBody.trim() &&
+                    !headers.has('content-type') &&
+                    (requestBody.trim().startsWith('{') || requestBody.trim().startsWith('['))
+                  ) {
+                    headers.set('Content-Type', 'application/json')
+                  }
                 }
 
                 logs.push(`HTTP ${node.data.requestMethod} ${target.host}${target.pathname}`)
@@ -809,10 +819,12 @@ function FlowEditor() {
                 const response = await fetch(target.toString(), requestInit)
                 output = await readResponsePreview(response)
                 logs.push(`Response: ${response.status} ${response.statusText}`)
+                if (output) {
+                  logs.push(`Response body: ${output.slice(0, 180).replace(/\s+/g, ' ')}`)
+                }
                 if (!response.ok) {
                   throw new Error(`Request returned HTTP ${response.status} ${response.statusText}.`)
                 }
-                logs.push(`Response body: ${output.slice(0, 180).replace(/\s+/g, ' ')}`)
               } catch (error) {
                 if (error instanceof Error && error.name === 'AbortError') {
                   throw new Error('HTTP request timed out. Increase the timeout or check the endpoint.')
