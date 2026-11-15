@@ -1,47 +1,46 @@
 # Flow
 
-**Flow** is a visual workflow builder by Orb Technologies. Its goal is to make automation understandable: add blocks, connect them, configure them, and run a workflow.
+**Flow** is a visual workflow automation application by Orb Technologies, designed around the Orb! language and runtime.
 
-> Early preview: the current runner is a local demonstration engine. It does not connect to external services or run background automations yet.
+## Product direction
+
+- Visual, drag-and-drop workflow editing.
+- Orb! as the native workflow language and execution runtime.
+- Shared application code across Windows, macOS, Linux and Android.
+- Native installers and a guided first-run setup; end users should not need to install developer toolchains.
+- Optional external-language adapters, without making them the default path.
 
 ## Current preview
 
-- Drag blocks from the left panel onto the canvas, or click to add them.
-- Connect blocks by dragging between their handles.
-- Select a block to edit its settings.
-- Run a small local workflow and inspect the execution log.
-- Workflows are saved automatically in the current browser.
-- Import and export workflows as JSON.
+- Drag blocks onto a canvas and connect them.
+- Configure text and condition blocks.
+- Run the local demonstration engine and inspect logs.
+- Automatic browser save, JSON import and export.
 
-## Blocks
+**Important:** the current runner is a local demonstration only. It does not execute Orb! code or connect to external services yet. The Tauri application shell and platform installers are being introduced; platform builds are not yet release-ready.
 
-| Block | Purpose |
-| --- | --- |
-| Manual trigger | Starts a workflow when Run is pressed |
-| Text | Creates a text value for the next block |
-| Condition | Routes the workflow through YES or NO based on an incoming text value |
-| Output | Writes the incoming value to the run console |
+## Development
 
-## Run locally
-
-Requirements: Node.js 20.19+.
+Requirements for contributors: Node.js 20.19+ and Rust stable. Platform-specific Tauri prerequisites are required to build native packages.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Create a production build:
+Desktop shell:
 
 ```bash
-npm run build
-npm run preview
+npm run tauri:dev
+npm run tauri:build
 ```
 
-## Product direction
+Android development additionally requires Android Studio, Android SDK/NDK and a JDK. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-The first milestone is a reliable, approachable editor. Future milestones can add reusable templates, real triggers, integrations, credentials, execution history, and a secure automation runtime. Those capabilities are not part of this preview.
+## Platform and Orb! architecture
+
+See [the platform and Orb! integration plan](docs/architecture/platforms-and-orb-integration.md).
 
 ## License
 
-The project is currently in active development. A license will be added before the first public stable release.
+A project license will be added before the first public stable release.
