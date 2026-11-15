@@ -15,6 +15,7 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react'
+import OnboardingWizard from './OnboardingWizard'
 import {
   Activity,
   ArrowDownToLine,
@@ -44,6 +45,7 @@ import {
 
 type NodeKind = 'trigger' | 'text' | 'condition' | 'log'
 type RunStatus = 'idle' | 'running' | 'success' | 'error'
+type MobilePanel = 'blocks' | 'settings' | null
 
 type FlowNodeData = {
   kind: NodeKind
@@ -64,6 +66,7 @@ type SavedWorkspace = {
 }
 
 const STORAGE_KEY = 'flow-workspace-v1'
+const ONBOARDING_KEY = 'flow-onboarding-complete-v1'
 
 const NODE_INFO: Record<NodeKind, { title: string; description: string; category: string }> = {
   trigger: {
@@ -249,10 +252,32 @@ function FlowEditor() {
   const [runLogs, setRunLogs] = useState<string[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [savedLocally, setSavedLocally] = useState(true)
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null)
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try {
+      return window.localStorage.getItem(ONBOARDING_KEY) !== 'done'
+    } catch {
+      return true
+    }
+  })
   const importInputRef = useRef<HTMLInputElement>(null)
   const { screenToFlowPosition, fitView } = useReactFlow()
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
+
+  const finishOnboarding = () => {
+    try {
+      window.localStorage.setItem(ONBOARDING_KEY, 'done')
+    } catch {
+      // The tour can still be dismissed when persistent storage is unavailable.
+    }
+    setShowOnboarding(false)
+  }
+
+  const openOnboarding = () => {
+    setMobilePanel(null)
+    setShowOnboarding(true)
+  }
 
   useEffect(() => {
     try {
@@ -285,6 +310,7 @@ function FlowEditor() {
       const nextNode = makeNode(kind, id, nextPosition)
       setNodes((current) => [...current, nextNode])
       setSelectedNodeId(id)
+      if (window.matchMedia('(max-width: 640px)').matches) setMobilePanel('settings')
       setNotice(`${NODE_INFO[kind].title} added`)
     },
     [nodes.length, setNodes],
@@ -340,6 +366,7 @@ function FlowEditor() {
     setEdges([])
     setWorkflowName('Untitled workflow')
     setSelectedNodeId(null)
+    setMobilePanel(null)
     setRunLogs([])
     setNotice('New workflow created')
   }
@@ -550,7 +577,7 @@ function FlowEditor() {
       </header>
 
       <div className="editor-layout">
-        <aside className="left-sidebar">
+        <aside className={`left-sidebar ${mobilePanel === 'blocks' ? 'is-mobile-open' : ''}`}>
           <div className="sidebar-heading">
             <div>
               <span className="eyebrow">BUILD</span>
@@ -596,7 +623,7 @@ function FlowEditor() {
           <div className="sidebar-footer">
             <span className="orb-status-dot" />
             <span>Flow editor preview</span>
-            <button aria-label="About this preview" onClick={() => setNotice('Flow is an early preview. Runs are simulated locally; external integrations are not connected yet.')} type="button">
+            <button aria-label="Open quick tour" onClick={openOnboarding} type="button">
               <CircleHelp size={15} />
             </button>
           </div>
@@ -625,8 +652,14 @@ function FlowEditor() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-              onPaneClick={() => setSelectedNodeId(null)}
+              onNodeClick={(_, node) => {
+                setSelectedNodeId(node.id)
+                if (window.matchMedia('(max-width: 640px)').matches) setMobilePanel('settings')
+              }}
+              onPaneClick={() => {
+                setSelectedNodeId(null)
+                if (window.matchMedia('(max-width: 640px)').matches) setMobilePanel(null)
+              }}
               onDrop={onDrop}
               onDragOver={(event) => {
                 event.preventDefault()
@@ -683,7 +716,7 @@ function FlowEditor() {
           )}
         </main>
 
-        <aside className="right-sidebar">
+        <aside className={`right-sidebar ${mobilePanel === 'settings' ? 'is-mobile-open' : ''}`}>
           {selectedNode ? (
             <>
               <div className="inspector-heading">
@@ -691,7 +724,7 @@ function FlowEditor() {
                   <span className="eyebrow">CONFIGURE</span>
                   <h2>Block settings</h2>
                 </div>
-                <button aria-label="Close block settings" className="icon-button" onClick={() => setSelectedNodeId(null)} type="button"><X size={16} /></button>
+                <button aria-label="Close block settings" className="icon-button" onClick={() => { setSelectedNodeId(null); setMobilePanel(null) }} type="button"><X size={16} /></button>
               </div>
               <div className="inspector-content">
                 <div className="inspector-type">
@@ -781,6 +814,23 @@ function FlowEditor() {
           )}
         </aside>
       </div>
+
+      <nav className="mobile-dock" aria-label="Mobile editor tools">
+        <button className={mobilePanel === 'blocks' ? 'is-active' : ''} onClick={() => setMobilePanel(mobilePanel === 'blocks' ? null : 'blocks')} type="button">
+          <Grip size={17} /><span>Blocks</span>
+        </button>
+        <button className={mobilePanel === 'settings' ? 'is-active' : ''} onClick={() => setMobilePanel(mobilePanel === 'settings' ? null : 'settings')} type="button">
+          <Code2 size={17} /><span>Settings</span>
+        </button>
+        <button onClick={startNewWorkflow} type="button">
+          <Plus size={17} /><span>New</span>
+        </button>
+        <button onClick={openOnboarding} type="button">
+          <CircleHelp size={17} /><span>Tour</span>
+        </button>
+      </nav>
+
+      {showOnboarding && <OnboardingWizard onClose={finishOnboarding} />}
 
       {notice && <div className="toast-message" role="status">{notice}</div>}
     </div>
