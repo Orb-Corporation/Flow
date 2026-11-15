@@ -196,6 +196,8 @@ button { color: inherit; }
 .node-icon-trigger { color: #e1b57f; background: rgba(192, 137, 77, .15); }
 .node-icon-text { color: #8ed0db; background: rgba(83, 162, 177, .15); }
 .node-icon-condition { color: #b6a9f0; background: rgba(139, 119, 215, .16); }
+.node-icon-variable { color: #8fd1b0; background: rgba(83, 162, 133, .16); }
+.node-icon-http { color: #87cbdc; background: rgba(63, 150, 174, .16); }
 .node-icon-log { color: #9eafc5; background: rgba(119, 143, 173, .15); }
 .palette-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
 .palette-copy strong { color: #dce5f0; font-size: 11px; font-weight: 600; }
@@ -297,6 +299,7 @@ button { color: inherit; }
 .workflow-node.is-selected { border-color: #84c3ce; box-shadow: 0 0 0 2px rgba(132,195,206,.13), 0 12px 26px rgba(0,0,0,.24); }
 .workflow-node.status-running { border-color: #d9aa6e; box-shadow: 0 0 0 2px rgba(217,170,110,.12), 0 10px 26px rgba(0,0,0,.22); }
 .workflow-node.status-success { border-color: #6ba987; }
+.workflow-node.status-error { border-color: #cf7777; box-shadow: 0 0 0 2px rgba(207,119,119,.12), 0 10px 26px rgba(0,0,0,.22); }
 .workflow-node-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .workflow-node-top .node-icon { width: 26px; height: 26px; flex-basis: 26px; border-radius: 7px; }
 .node-category { color: #8090a5; font-size: 9px; font-weight: 600; }

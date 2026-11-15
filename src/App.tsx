@@ -18,6 +18,8 @@ import type { Connection, Edge, Node, NodeProps, NodeTypes } from '@xyflow/react
 import OnboardingWizard from './OnboardingWizard'
 import {
   Activity,
+  Braces,
+  Globe2,
   Maximize2,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -42,7 +44,8 @@ import {
   Zap,
 } from 'lucide-react'
 
-type NodeKind = 'trigger' | 'text' | 'condition' | 'log'
+type NodeKind = 'trigger' | 'text' | 'condition' | 'variable' | 'http' | 'log'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 type RunStatus = 'idle' | 'running' | 'success' | 'error'
 type MobilePanel = 'blocks' | 'settings' | null
 
@@ -52,6 +55,13 @@ type FlowNodeData = {
   description: string
   text: string
   match: string
+  variableName: string
+  variableValue: string
+  requestMethod: HttpMethod
+  requestUrl: string
+  requestHeaders: string
+  requestBody: string
+  timeoutMs: number
   status: RunStatus
 }
 
@@ -83,6 +93,16 @@ const NODE_INFO: Record<NodeKind, { title: string; description: string; category
     description: 'Choose a path based on the incoming text.',
     category: 'Logic',
   },
+  variable: {
+    title: 'Set variable',
+    description: 'Save a named value for later blocks.',
+    category: 'Actions',
+  },
+  http: {
+    title: 'HTTP request',
+    description: 'Send a web request and pass its response onward.',
+    category: 'Actions',
+  },
   log: {
     title: 'Output',
     description: 'Add the incoming value to the run log.',
@@ -94,6 +114,8 @@ const NODE_ICONS = {
   trigger: Zap,
   text: Type,
   condition: GitBranch,
+  variable: Braces,
+  http: Globe2,
   log: Terminal,
 }
 
@@ -109,6 +131,13 @@ function makeNode(kind: NodeKind, id: string, position: { x: number; y: number }
       description: info.description,
       text: kind === 'text' ? 'Hello from Flow. Your first workflow is ready.' : '',
       match: kind === 'condition' ? 'Flow' : '',
+      variableName: 'message',
+      variableValue: '{{input}}',
+      requestMethod: 'GET',
+      requestUrl: 'https://jsonplaceholder.typicode.com/todos/1',
+      requestHeaders: '{\n  "Accept": "application/json"\n}',
+      requestBody: '{\n  "message": "{{input}}"\n}',
+      timeoutMs: 10000,
       status: 'idle',
     },
   }
@@ -188,6 +217,21 @@ function normalizeWorkspace(value: unknown): SavedWorkspace | null {
         description: NODE_INFO[nodeKind].description,
         text: typeof settings.text === 'string' ? settings.text.slice(0, 20000) : '',
         match: typeof settings.match === 'string' ? settings.match.slice(0, 500) : '',
+        variableName:
+          typeof settings.variableName === 'string' && /^[A-Za-z_][A-Za-z0-9_]{0,39}$/.test(settings.variableName)
+            ? settings.variableName
+            : 'message',
+        variableValue: typeof settings.variableValue === 'string' ? settings.variableValue.slice(0, 20000) : '{{input}}',
+        requestMethod: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(String(settings.requestMethod))
+          ? settings.requestMethod as HttpMethod
+          : 'GET',
+        requestUrl: typeof settings.requestUrl === 'string' ? settings.requestUrl.slice(0, 2000) : '',
+        requestHeaders: typeof settings.requestHeaders === 'string' ? settings.requestHeaders.slice(0, 10000) : '{}',
+        requestBody: typeof settings.requestBody === 'string' ? settings.requestBody.slice(0, 20000) : '',
+        timeoutMs:
+          typeof settings.timeoutMs === 'number' && Number.isFinite(settings.timeoutMs)
+            ? Math.min(30000, Math.max(1000, Math.round(settings.timeoutMs)))
+            : 10000,
         status: 'idle',
       },
     })
@@ -245,6 +289,47 @@ function normalizeWorkspace(value: unknown): SavedWorkspace | null {
     nodes,
     edges,
   }
+}
+
+function resolveTemplate(
+  template: string,
+  input: string,
+  variables: Record<string, string>,
+): string {
+  return template.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (_match, name: string) => {
+    if (name === 'input') return input
+    if (!Object.hasOwn(variables, name)) {
+      throw new Error(`Variable "{{${name}}}" has not been set.`)
+    }
+    return variables[name]
+  })
+}
+
+async function readResponsePreview(response: Response, maxCharacters = 50000): Promise<string> {
+  if (!response.body) return ''
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let result = ''
+  let truncated = false
+
+  try {
+    while (true) {
+      const chunk = await reader.read()
+      if (chunk.done) break
+      result += decoder.decode(chunk.value, { stream: true })
+      if (result.length > maxCharacters) {
+        result = result.slice(0, maxCharacters)
+        truncated = true
+        await reader.cancel().catch(() => undefined)
+        break
+      }
+    }
+    result += decoder.decode()
+  } finally {
+    reader.releaseLock()
+  }
+
+  return truncated ? `${result}\n… response truncated at 50 KB` : result
 }
 
 function hasDirectedCycle(nodes: FlowNode[], edges: Edge[]): boolean {
@@ -318,6 +403,12 @@ function WorkflowNode({ data, selected }: NodeProps<FlowNode>) {
             <span>YES</span>
             <span>NO</span>
           </div>
+        )}
+        {data.kind === 'variable' && (
+          <div className="node-preview">{`{{${data.variableName}}} = ${data.variableValue || '(empty)'}`}</div>
+        )}
+        {data.kind === 'http' && (
+          <div className="node-preview">{data.requestMethod} · {data.requestUrl}</div>
         )}
         {data.kind === 'log' && <div className="node-preview output-preview">Run output</div>}
       </div>
@@ -593,6 +684,16 @@ function FlowEditor() {
       return
     }
 
+    const containsHttpRequest = nodes.some((node) => node.data.kind === 'http')
+    if (
+      containsHttpRequest &&
+      !window.confirm(
+        'This workflow contains an HTTP Request block. Running it sends network requests to the configured URLs. Do not include passwords, API keys, personal data or other secrets. Continue?',
+      )
+    ) {
+      return
+    }
+
     setIsRunning(true)
     setRunLogs([])
     setNodes((current) =>
@@ -605,73 +706,179 @@ function FlowEditor() {
     }))
     const visited = new Set<string>()
     const logs: string[] = []
+    const variables: Record<string, string> = Object.create(null) as Record<string, string>
     const nodeLookup = new Map(nodes.map((node) => [node.id, node]))
+    let activeNodeId: string | null = null
 
     try {
       while (queue.length > 0) {
-      const item = queue.shift()
-      if (!item || visited.has(item.id)) continue
-      visited.add(item.id)
+        const item = queue.shift()
+        if (!item || visited.has(item.id)) continue
+        visited.add(item.id)
 
-      const node = nodeLookup.get(item.id)
-      if (!node) continue
+        const node = nodeLookup.get(item.id)
+        if (!node) continue
+        activeNodeId = item.id
 
-      setNodes((current) =>
-        current.map((entry) =>
-          entry.id === item.id
-            ? { ...entry, data: { ...entry.data, status: 'running' } }
-            : entry,
-        ),
-      )
+        setNodes((current) =>
+          current.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, data: { ...entry.data, status: 'running' } }
+              : entry,
+          ),
+        )
 
-      await new Promise((resolve) => window.setTimeout(resolve, 160))
+        let output = item.value
+        let conditionPassed = true
 
-      let output = item.value
-      let conditionPassed = true
+        try {
+          switch (node.data.kind) {
+            case 'trigger':
+              output = 'Workflow started'
+              logs.push('Manual trigger started the workflow')
+              break
 
-      switch (node.data.kind) {
-        case 'trigger':
-          output = 'Workflow started'
-          logs.push('Manual trigger started the workflow')
-          break
-        case 'text':
-          output = node.data.text
-          logs.push(`Text: ${output || '(empty)'}`)
-          break
-        case 'condition': {
-          const expected = node.data.match.trim().toLocaleLowerCase()
-          conditionPassed = expected.length === 0 || item.value.toLocaleLowerCase().includes(expected)
-          logs.push(`Condition: ${conditionPassed ? 'matched' : 'not matched'}`)
-          break
+            case 'text':
+              output = resolveTemplate(node.data.text, item.value, variables)
+              logs.push(`Text block completed (${output.length} characters)`)
+              break
+
+            case 'variable': {
+              const name = node.data.variableName.trim()
+              if (!/^[A-Za-z_][A-Za-z0-9_]{0,39}$/.test(name) || name === 'input') {
+                throw new Error('Variable names must start with a letter or underscore and cannot be "input".')
+              }
+              variables[name] = resolveTemplate(node.data.variableValue, item.value, variables)
+              logs.push(`Variable set: {{${name}}}`)
+              break
+            }
+
+            case 'condition': {
+              const expected = node.data.match.trim().toLocaleLowerCase()
+              conditionPassed =
+                expected.length === 0 || item.value.toLocaleLowerCase().includes(expected)
+              logs.push(`Condition: ${conditionPassed ? 'matched' : 'not matched'}`)
+              break
+            }
+
+            case 'http': {
+              const target = new URL(resolveTemplate(node.data.requestUrl.trim(), item.value, variables))
+              if (!['http:', 'https:'].includes(target.protocol)) {
+                throw new Error('HTTP Request only supports http:// and https:// URLs.')
+              }
+              if (target.username || target.password) {
+                throw new Error('Do not put usernames or passwords inside a request URL.')
+              }
+
+              const parsedHeaders: unknown = JSON.parse(
+                resolveTemplate(node.data.requestHeaders || '{}', item.value, variables),
+              )
+              if (!parsedHeaders || typeof parsedHeaders !== 'object' || Array.isArray(parsedHeaders)) {
+                throw new Error('Request headers must be a JSON object.')
+              }
+
+              const headers = new Headers()
+              for (const [name, value] of Object.entries(parsedHeaders)) {
+                if (typeof value !== 'string') {
+                  throw new Error(`Header "${name}" must have a text value.`)
+                }
+                if (/(authorization|auth|cookie|api[-_]?key|token|password|secret)/i.test(name)) {
+                  throw new Error(`Credential header "${name}" is disabled until secure credential storage is available.`)
+                }
+                headers.set(name, resolveTemplate(value, item.value, variables))
+              }
+
+              const controller = new AbortController()
+              const timeout = window.setTimeout(
+                () => controller.abort(),
+                Math.min(30000, Math.max(1000, node.data.timeoutMs || 10000)),
+              )
+
+              try {
+                const requestInit: RequestInit = {
+                  method: node.data.requestMethod,
+                  headers,
+                  signal: controller.signal,
+                }
+                if (!['GET'].includes(node.data.requestMethod)) {
+                  requestInit.body = resolveTemplate(node.data.requestBody, item.value, variables)
+                }
+
+                logs.push(`HTTP ${node.data.requestMethod} ${target.host}${target.pathname}`)
+                setRunLogs([...logs])
+                const response = await fetch(target.toString(), requestInit)
+                output = await readResponsePreview(response)
+                logs.push(`Response: ${response.status} ${response.statusText}`)
+                if (!response.ok) {
+                  throw new Error(`Request returned HTTP ${response.status} ${response.statusText}.`)
+                }
+                logs.push(`Response body: ${output.slice(0, 180).replace(/\s+/g, ' ')}`)
+              } catch (error) {
+                if (error instanceof Error && error.name === 'AbortError') {
+                  throw new Error('HTTP request timed out. Increase the timeout or check the endpoint.')
+                }
+                if (error instanceof TypeError) {
+                  throw new Error('Network request failed. Check the URL, connection and endpoint CORS policy.')
+                }
+                throw error
+              } finally {
+                window.clearTimeout(timeout)
+              }
+              break
+            }
+
+            case 'log':
+              logs.push(`Output: ${item.value || '(empty)'}`)
+              break
+          }
+        } catch (error) {
+          setNodes((current) =>
+            current.map((entry) =>
+              entry.id === item.id
+                ? { ...entry, data: { ...entry.data, status: 'error' } }
+                : entry,
+            ),
+          )
+          throw error
         }
-        case 'log':
-          logs.push(`Output: ${item.value || '(empty)'}`)
-          break
+
+        setNodes((current) =>
+          current.map((entry) =>
+            entry.id === item.id
+              ? { ...entry, data: { ...entry.data, status: 'success' } }
+              : entry,
+          ),
+        )
+        setRunLogs([...logs])
+
+        const outgoing = edges.filter((edge) => edge.source === item.id)
+        const nextEdges =
+          node.data.kind === 'condition'
+            ? outgoing.filter((edge) => edge.sourceHandle === (conditionPassed ? 'yes' : 'no'))
+            : outgoing
+
+        nextEdges.forEach((edge) => {
+          queue.push({ id: edge.target, value: output })
+        })
+        activeNodeId = null
       }
 
-      setNodes((current) =>
-        current.map((entry) =>
-          entry.id === item.id
-            ? { ...entry, data: { ...entry.data, status: 'success' } }
-            : entry,
-        ),
-      )
-
-      setRunLogs([...logs])
-
-      const outgoing = edges.filter((edge) => edge.source === item.id)
-      const nextEdges =
-        node.data.kind === 'condition'
-          ? outgoing.filter((edge) => edge.sourceHandle === (conditionPassed ? 'yes' : 'no'))
-          : outgoing
-
-      nextEdges.forEach((edge) => {
-        queue.push({ id: edge.target, value: output })
-      })
-    }
-
       setRunLogs(logs)
-      setNotice('Preview finished. No external services were called.')
+      setNotice('Workflow preview completed.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'An unknown error stopped the workflow.'
+      if (activeNodeId) {
+        setNodes((current) =>
+          current.map((entry) =>
+            entry.id === activeNodeId
+              ? { ...entry, data: { ...entry.data, status: 'error' } }
+              : entry,
+          ),
+        )
+      }
+      logs.push(`Run stopped: ${message}`)
+      setRunLogs([...logs])
+      setNotice(`Workflow stopped: ${message}`)
     } finally {
       setIsRunning(false)
     }
@@ -856,6 +1063,8 @@ function FlowEditor() {
                   if (data.kind === 'trigger') return '#d29a54'
                   if (data.kind === 'condition') return '#8d79d8'
                   if (data.kind === 'text') return '#4c9eac'
+                  if (data.kind === 'variable') return '#6eae9b'
+                  if (data.kind === 'http') return '#4e9eae'
                   return '#6e829c'
                 }}
                 maskColor="rgba(8, 13, 21, 0.72)"
@@ -933,8 +1142,102 @@ function FlowEditor() {
                       rows={5}
                       value={selectedNode.data.text}
                     />
-                    <span className="field-help">This value is passed to the next connected block.</span>
+                    <span className="field-help">Use {'{{input}}'} for the incoming value or {'{{variableName}}'} for a variable set earlier in the workflow.</span>
                   </label>
+                )}
+
+                {selectedNode.data.kind === 'variable' && (
+                  <>
+                    <label className="field-label">
+                      Variable name
+                      <input
+                        className="field-input"
+                        maxLength={40}
+                        onChange={(event) => updateSelectedNode({ variableName: event.target.value })}
+                        placeholder="customerName"
+                        value={selectedNode.data.variableName}
+                      />
+                    </label>
+                    <label className="field-label">
+                      Value
+                      <textarea
+                        className="field-input field-textarea"
+                        onChange={(event) => updateSelectedNode({ variableValue: event.target.value })}
+                        placeholder="For example: {{input}}"
+                        rows={4}
+                        value={selectedNode.data.variableValue}
+                      />
+                      <span className="field-help">Later blocks can use this value as {'{{variableName}}'}. The original input continues to the next block.</span>
+                    </label>
+                  </>
+                )}
+
+                {selectedNode.data.kind === 'http' && (
+                  <>
+                    <label className="field-label">
+                      Method
+                      <select
+                        className="field-input"
+                        onChange={(event) => updateSelectedNode({ requestMethod: event.target.value as HttpMethod })}
+                        value={selectedNode.data.requestMethod}
+                      >
+                        {(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as HttpMethod[]).map((method) => (
+                          <option key={method} value={method}>{method}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field-label">
+                      Request URL
+                      <input
+                        className="field-input"
+                        maxLength={2000}
+                        onChange={(event) => updateSelectedNode({ requestUrl: event.target.value })}
+                        placeholder="https://api.example.com/items"
+                        value={selectedNode.data.requestUrl}
+                      />
+                      <span className="field-help">Use {'{{input}}'} or {'{{variableName}}'} in the URL. Only HTTP and HTTPS addresses are supported.</span>
+                    </label>
+                    <label className="field-label">
+                      Headers (JSON)
+                      <textarea
+                        className="field-input field-textarea"
+                        onChange={(event) => updateSelectedNode({ requestHeaders: event.target.value })}
+                        placeholder={'{\n  "Accept": "application/json"\n}'}
+                        rows={4}
+                        value={selectedNode.data.requestHeaders}
+                      />
+                      <span className="field-help">Credential headers are disabled. Do not put API keys, passwords or private data in workflows.</span>
+                    </label>
+                    {!['GET'].includes(selectedNode.data.requestMethod) && (
+                      <label className="field-label">
+                        Request body
+                        <textarea
+                          className="field-input field-textarea"
+                          onChange={(event) => updateSelectedNode({ requestBody: event.target.value })}
+                          placeholder={'{\n  "message": "{{input}}"\n}'}
+                          rows={5}
+                          value={selectedNode.data.requestBody}
+                        />
+                      </label>
+                    )}
+                    <label className="field-label">
+                      Timeout
+                      <select
+                        className="field-input"
+                        onChange={(event) => updateSelectedNode({ timeoutMs: Number(event.target.value) })}
+                        value={String(selectedNode.data.timeoutMs)}
+                      >
+                        <option value="5000">5 seconds</option>
+                        <option value="10000">10 seconds</option>
+                        <option value="20000">20 seconds</option>
+                        <option value="30000">30 seconds</option>
+                      </select>
+                    </label>
+                    <div className="info-card">
+                      <Globe2 size={16} />
+                      <p>Requests are sent from this device after you confirm a workflow run. Some services block browser requests unless they enable CORS. Flow does not bypass those restrictions.</p>
+                    </div>
+                  </>
                 )}
 
                 {selectedNode.data.kind === 'condition' && (

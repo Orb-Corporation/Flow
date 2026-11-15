@@ -12,11 +12,13 @@ Keep the visual editor and versioned workflow document independent from any exte
 
 The current local preview engine supports:
 - Manual trigger.
-- Text value creation/replacement.
+- Text value creation/replacement, including {{input}} and {{variableName}} interpolation.
+- Named variables that remain available to later blocks in the run.
 - Case-insensitive text-match conditions with YES/NO branches.
+- HTTP(S) requests with configurable method, JSON headers, request body and timeout.
 - Output logging.
 
-The preview engine must reject unsupported graph cycles rather than silently skipping nodes. It must clearly state that external services, local files and messaging are not available in this preview.
+HTTP requests are made from the local device after an explicit run confirmation. Browser/webview CORS restrictions remain in effect. Credential-bearing headers are disabled until platform secure-storage support is implemented. The preview engine must reject unsupported graph cycles rather than silently skipping nodes. It does not access local files or send email.
 
 ## Optional integration boundary
 
@@ -28,7 +30,7 @@ Future adapters should expose a small, versioned interface:
 - `workflow.cancel`: cancel a run.
 - `run.event`: stream node-started, node-finished, output and error events.
 
-The editor must remain usable when no adapter is installed. Credentials must be stored in the platform's secure credential store, never in workflow JSON or localStorage. Optional adapters must be explicit about required runtimes and permissions.
+The editor must remain usable when no adapter is installed. Credentials must be stored in the platform's secure credential store, never in workflow JSON or localStorage. Optional adapters must be explicit about required runtimes and permissions. The current HTTP block intentionally rejects common credential headers until secure storage is available.
 
 ## Supported platforms
 

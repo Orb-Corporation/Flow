@@ -60,7 +60,7 @@ export default function OnboardingWizard({ onClose }: OnboardingWizardProps) {
           <span>{current.detail}</span>
         </div>
         <div className="wizard-warning">
-          Preview runs are local only. The current blocks process text and conditions inside Flow; they do not call external APIs or access files, email, or other services.
+          Preview runs can process text, variables and conditions locally. HTTP Request blocks can contact public web services after confirmation. They do not access local files or send email. Never put API keys, passwords or personal data in a workflow.
         </div>
 
         <div className="wizard-footer">

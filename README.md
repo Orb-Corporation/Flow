@@ -12,14 +12,16 @@
 
 ## Current preview
 
-- Add trigger, text, condition and output blocks.
+- Add trigger, text, variable, condition, HTTP request and output blocks.
 - Connect blocks to define execution order and YES/NO condition paths.
-- Configure block names, text content and match conditions.
-- Run a local preview and watch node status and execution logs update.
+- Configure block names, text content, variables, request methods, URLs, headers and bodies.
+- Use {{input}} and {{variableName}} placeholders in text, URL, header and body fields.
+- Run a local preview; HTTP requests are sent from the device only after an explicit confirmation.
+- Inspect node status, HTTP status codes and execution logs.
 - Automatic local save, JSON import and export.
 - A touch-friendly mobile layout and a first-run product tour.
 
-**Execution boundary:** the current preview engine only processes the four built-in block types locally. It does not execute Orb! code, call external APIs, send messages, or access local files. Integrations are not shipped yet.
+**Execution boundary:** the preview engine runs the built-in trigger, text, variable, condition and output blocks locally. The HTTP Request block can send HTTP(S) requests from the device. Browser/webview CORS rules still apply. Credential-bearing headers (Authorization, cookies, API keys, tokens and similar values) are disabled until secure credential storage exists. Flow does not execute Orb! code, access local files or send email yet.
 
 ## Development
 
