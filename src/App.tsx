@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, DragEvent } from 'react'
 import {
   addEdge,
   Background,
@@ -306,7 +307,7 @@ function FlowEditor() {
   )
 
   const onDrop = useCallback(
-    (event: React.DragEvent) => {
+    (event: DragEvent) => {
       event.preventDefault()
       const kind = event.dataTransfer.getData('application/flow-node') as NodeKind
       if (!kind || !(kind in NODE_INFO)) return
@@ -362,7 +363,7 @@ function FlowEditor() {
     setNotice('Workflow exported')
   }
 
-  const importWorkspace = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const importWorkspace = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -601,14 +602,7 @@ function FlowEditor() {
           </div>
         </aside>
 
-        <main
-          className="canvas-wrap"
-          onDragOver={(event) => {
-            event.preventDefault()
-            event.dataTransfer.dropEffect = 'move'
-          }}
-          onDrop={onDrop}
-        >
+        <main className="canvas-wrap">
           <div className="canvas-toolbar">
             <div className="canvas-breadcrumb">
               <span>Workspace</span>
